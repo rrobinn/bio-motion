@@ -1,4 +1,11 @@
+% This code reads in eye-tracking .mat files in a specified directory
+% (`matFileDir`). It reads all files listed in text files
+% (`particList.txt`).  These inputs can be edited in the first few lines of
+% the script.
+
 %% constants
+clear
+clc
 wdir = '/Users/sifre002/Documents/Code/bio-motion/';
 particList = '/Users/sifre002/Box/sifre002/9_ExcelSpreadsheets/05_BioMotion/particList.txt';
 matFileDir = '/Users/sifre002/Box/sifre002/7_MatFiles/04_BioMotion/partic_data/';
@@ -62,12 +69,21 @@ assert(fileID~=-1, 'getSEssionsToDownload: participant textFile directory does n
 myParticList = textscan(fileID, '%s'); myParticList = myParticList{1,1};
 
 allOut = [];
+errorLog={};
 for p = 1:size(myParticList,1) % For each participant:
    
     % Load data
     id = myParticList{p};
     file = [matFileDir id '_data.mat'];
-    load(file);
+    
+    disp([id '---' num2str(p) ' of ' num2str(length(myParticList)) ]);
+    try
+        load(file);
+    catch ME % save error
+        errorLog=vertcat(errorLog,[id '--' ME.identifier]);
+        display(errorLog,[id '--' ME.identifier]);
+        continue
+    end
     currentClipList = eval([id(1:8) '_prefbin.MovieListAsPresented']);  %Get the list of clips as presented
     currentMatFile = eval([id(1:8) '_data']);
     
@@ -109,19 +125,22 @@ for p = 1:size(myParticList,1) % For each participant:
         
     else
         disp(['no anim data for  ' id]);
+        errorLog = vertcat(errorLog, ['no anim data for  ' id]);
         continue
     end
     thisParticOut = num2cell(thisParticOut);
     thisParticOut(:,9) = {id};
     allOut = vertcat(allOut, thisParticOut);
+    
+    % clear data from workspace
+    id=strsplit(id, '_'); id=id{1}; % Part of ID without sess #
+    toDelete={[id '_data'], [id '_prefbin'], [id '_recalibdata']};
+    clear(toDelete{:}); 
 end % end participant loop
 
 
 %% save data
-save('/Users/sifre002/Box/sifre002/7_MatFiles/04_BioMotion/fixTallys.mat', 'allOut');
+headers = {'mov', 'part', 'include', 'saccCount', 'missingCount', 'blinkCount', 'fp1Count', 'fp2Count', 'id'};
+save('/Users/sifre002/Box/sifre002/7_MatFiles/04_BioMotion/fixTallys.mat', 'allOut', 'headers', 'errorLog');
 
-%%
-%headers = {'mov', 'part', 'include', 'saccCount', 'missingCount', 'blinkCount', 'fp1Count', 'fp2Count', 'id'};
-%mytable = cell2table(allOut,  'variablenames', headers); 
 
-% writetable(mytable,'/Users/sifre002/Box/sifre002/
