@@ -1,13 +1,11 @@
 % This code reads in eye-tracking .mat files in a specified directory
-% (`matFileDir`). It reads all files listed in text files
-% (`particList.txt`).  These inputs can be edited in the first few lines of
+% (`matFileDir`).  These inputs can be edited in the first few lines of
 % the script.
 
 %% constants
 clear
 clc
 wdir = '/Users/sifre002/Documents/Code/bio-motion/';
-particList = '/Users/sifre002/Box/sifre002/9_ExcelSpreadsheets/05_BioMotion/particList.txt';
 matFileDir = '/Users/sifre002/Box/sifre002/7_MatFiles/04_BioMotion/partic_data/';
 
 % CHECK THAT THIS IS CORRECT
@@ -61,24 +59,22 @@ for m = 1:size(long,1)
     end
 end
 
-% Get relevant data columns
 
-%% Read in participant list
-fileID = fopen(particList);
-assert(fileID~=-1, 'getSEssionsToDownload: participant textFile directory does not exist');
-myParticList = textscan(fileID, '%s'); myParticList = myParticList{1,1};
+%% Get list of all files in matFileDir
+myFiles = dir(matFileDir);
+myFiles=myFiles(~[myFiles.isdir]); % .mat files are not in separate directories 
 
 allOut = [];
 errorLog={};
-for p = 1:size(myParticList,1) % For each participant:
+for p = 1:size(myFiles,1) % For each .mat file:
    
     % Load data
-    id = myParticList{p};
-    file = [matFileDir id '_data.mat'];
-    
-    disp([id '---' num2str(p) ' of ' num2str(length(myParticList)) ]);
+    file = myFiles(p).name;
+    id=strsplit(file, '_');
+    id = [id{1} '_' id{2}];
+    disp([id '---' num2str(p) ' of ' num2str(length(myFiles)) ]);
     try
-        load(file);
+        load([matFileDir file]);
     catch ME % save error
         errorLog=vertcat(errorLog,[id '--' ME.identifier]);
         display(errorLog,[id '--' ME.identifier]);
@@ -144,3 +140,4 @@ headers = {'mov', 'part', 'include', 'saccCount', 'missingCount', 'blinkCount', 
 save('/Users/sifre002/Box/sifre002/7_MatFiles/04_BioMotion/fixTallys.mat', 'allOut', 'headers', 'errorLog');
 
 
+clearvars -except allOut headers errorLog
