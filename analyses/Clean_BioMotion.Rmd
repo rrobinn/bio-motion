@@ -1,0 +1,340 @@
+---
+title: "Bio Motion - Clean data"
+date: "`r Sys.Date()`"
+auhtor: "Robin Sifre <robinsifre@gmail.com"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(readxl)
+library(tidyverse)
+library(knitr)
+library(DT)
+library(ggridges)
+library(segmented)
+library(DiagrammeR)
+options(scipen = 2)
+```
+
+
+
+```{r loaddata, warning=FALSE, message=FALSE, include = FALSE}
+datadir = '/Users/sifre002/Box/sifre002/9_ExcelSpreadsheets/05_BioMotion/' # directory with data
+wd = '/Users/sifre002/Documents/Code/bio-motion/' # set wd for helper functions
+
+# Eye-tracking data
+dat = read_excel( paste(datadir, 'Summary_dat/17-Jul-2020_Balanced_dat.xlsx', sep=''), sheet = "Sheet1") # Balanced ET data 
+error_sessions = read_excel( paste(datadir, 'Summary_dat/17-Jul-2020_ErrorLog_FixCounts_BioMotion.xlsx', sep='') ) # .mat files without data
+
+# Demographics data 
+asd = read_excel( paste(datadir, 'partic_characteristics/clipLevelInfo_byDxGroup.xlsx', sep=''), sheet = 'ASD')
+bap = read_excel( paste(datadir, 'partic_characteristics/clipLevelInfo_byDxGroup.xlsx', sep=''), sheet = 'HR_BAP')
+ua = read_excel( paste(datadir, 'partic_characteristics/clipLevelInfo_byDxGroup.xlsx', sep=''), sheet = 'HR_UA')
+demo = rbind(asd,bap,ua)
+
+# Gestational age 
+ga = read_csv(paste(datadir, 'partic_characteristics/gest_age.csv', sep='') )
+
+# ADOS
+ados_hr = read_excel( paste(datadir, 'partic_characteristics/ADOS.xlsx', sep =''), sheet = 'hr_ados')
+ados_lr = read_excel( paste(datadir, 'partic_characteristics/ADOS.xlsx', sep =''), sheet = 'lr_ados')
+
+# Mullen
+mullen_hr = read_excel( paste(datadir, 'partic_characteristics/mullen.xlsx', sep =''), sheet = 'hr_mullen')
+mullen_lr = read_excel( paste(datadir, 'partic_characteristics/mullen.xlsx', sep =''), sheet = 'lr_mullen')
+
+# LR data already cleaned ( session - level )
+lr_dat = read_excel( paste(datadir, 'Low-Risk-SciRep.xlsx', sep=''), sheet = 'CountData')
+```
+
+
+# Merging participant-characteristic data
+```{r}
+grViz("digraph {
+      graph [layout = dot, rankdir = TB]
+
+      node [fontname = Helvetica, shape = rectangle]
+
+      rec1 [label = '1. Import demographcs \n (session #, age, quality, sex, risk, CBE)']
+      rec2 [label = '2. Merge with gestational age data \n (Coded in weeks OR categorical)']
+      rec3 [label = '3. Merge with 24-month Mullen scores']
+      rec4 [label = '4. Merge with 24-month ADOS scores']
+      rec1 -> rec2 -> rec3 -> rec4
+      
+}",
+height = 250
+      )
+```
+
+
+## Notes 
+```{r}
+# Clean demographic data
+demo=demo %>%
+  # Clean risk and outcome 
+  mutate(Risk=ifelse(Risk=='low', 'LR', Risk),
+         Risk=ifelse(Risk=='high', 'HR', Risk),
+         CBE=toupper(CBE),
+         CBE=ifelse(CBE=='TD'|CBE=='NON-ASD', 'UA', CBE),
+         CBE=ifelse(CBE=='BAP/DD', 'BAP', CBE)) %>%
+  # Add 0 to matlab_id
+  mutate(session2=ifelse( session<10,  paste(0,session,sep=''), as.character(session) ),
+         Matlab_session2= paste(`Matlab ID`, session2, sep='_')) %>%
+  dplyr::select(-c(session, Matlab_session)) %>%
+  dplyr::select(c(Individual,
+                  matlabID = `Matlab ID`,
+                  Matlab_session = Matlab_session2,
+                  Age=age, 
+                  Date, Quality, Sex, Risk, CBE,
+                  session=session2))
+demo = unique(demo) 
+```
+
+
+```{r}
+# Clean gestational age data
+ga2 = ga %>% 
+  # Remove empty rows
+  filter(!is.na(Code)) %>% 
+  # First try `Gestational Age in Weeks`
+  mutate(ga = ifelse(!is.na(`Gestational Age in Weeks`), `Gestational Age in Weeks`, NA)) %>%
+  # Then try ind_gest_age, Labor Delivery Before After Due Date Recoded
+  mutate(ga = ifelse(is.na(ga) & !is.na(ind_gest_age), ind_gest_age, ga ),
+         ga = ifelse(is.na(ga) & !is.na(`Labor Delivery Before After Due Date Recoded`), `Labor Delivery Before After Due Date Recoded`, ga),
+         ga = ifelse(is.na(ga) & !is.na(`Labor Delivery Weeks Before Due Date Recoded`), `Labor Delivery Weeks Before Due Date Recoded`, ga)) %>%
+  # Create gest age category 
+  mutate(ga_cat = ifelse(birth_order ==1 & first_child_less28wks == 'yes', 'less28wks', NA), # extremely preterm
+         ga_cat = ifelse(birth_order ==2 & second_child_less28wks == 'yes', 'less28wks', ga_cat),
+         ga_cat = ifelse(birth_order ==3 & third_child_less28wks == 'yes', 'less28wks', ga_cat),
+         ga_cat = ifelse(birth_order ==4 & fourth_child_less28wks == 'yes', 'less28wks', ga_cat),
+         ga_cat = ifelse(birth_order ==5 & fifth_child_less28wks == 'yes', 'less28wks', ga_cat),
+         # very preterm
+         ga_cat = ifelse(birth_order ==1 & first_child_28_32wks == 'yes', '28_32wks', ga_cat), 
+         ga_cat = ifelse(birth_order ==2 & second_child_28_32wks == 'yes', '28_32wks', ga_cat),
+         ga_cat = ifelse(birth_order ==3 & third_child_28_32wks == 'yes', '28_32wks', ga_cat),
+         ga_cat = ifelse(birth_order ==4 & fourth_child_28_32wks == 'yes', '28_32wks', ga_cat),
+         ga_cat = ifelse(birth_order ==5 & fifth_child_28_32wks == 'yes', '28_32wks', ga_cat),
+         #  preterm
+         ga_cat = ifelse(birth_order ==1 & first_child_32_37wks == 'yes', '32_37wks', ga_cat), 
+         ga_cat = ifelse(birth_order ==2 & second_child_32_37wks == 'yes', '32_37wks', ga_cat),
+         ga_cat = ifelse(birth_order ==3 & third_child_32_37wks == 'yes', '32_37wks', ga_cat),
+         ga_cat = ifelse(birth_order ==4 & fourth_child_32_37wks == 'yes', '32_37wks', ga_cat),
+         ga_cat = ifelse(birth_order ==5 & fifth_child_32_37wks == 'yes', '32_37wks', ga_cat), 
+         # full term
+         ga_cat = ifelse(birth_order ==1 & first_child_more37wks == 'yes', 'more37wks', ga_cat), 
+         ga_cat = ifelse(birth_order ==2 & second_child_more37wks == 'yes', 'more37wks', ga_cat),
+         ga_cat = ifelse(birth_order ==3 & third_child_more37wks == 'yes', 'more37wks', ga_cat),
+         ga_cat = ifelse(birth_order ==4 & fourth_child_more37wks == 'yes', 'more37wks', ga_cat),
+         ga_cat = ifelse(birth_order ==5 & fifth_child_more37wks == 'yes', 'more37wks', ga_cat)) %>%
+  # Keep relevant cols
+  dplyr::select(id=Code, ga, ga_cat)
+         
+```
+
+
+
+Some kids have more than one 24m ADOS. If this is the case, here was how I selected:  
+- First choice: ados2-module1.  
+- Second choice: ados2-module2.  
+- Third choice: ados2-t.  
+- Fourth choice: ados-1.  
+
+```{r}
+# Clean_ados 
+colnames(ados_hr) = c('id', 'ados_measure', 'ados_age', 'ados_verbal', 'ados_SA', 'ados_RRB', 'ados_Total', 'ados_CSS')
+colnames(ados_lr) = c('id', 'ados_measure', 'ados_age', 'ados_verbal','ados_SA', 'ados_RRB', 'ados_Total', 'ados_CSS')
+
+ados=rbind(ados_hr %>% mutate(Risk = 'HR'),
+      ados_lr %>% mutate(Risk = 'LR'))
+
+# Some kids have ADOSes as multiple time points, and multiple versions of the ADOS at a single timepoint. 
+# To filter, 1) Find the time point closest to 24 months, 2) if there are multiple ADOSes at 24m select based on the best option.
+
+ados2 = ados %>%
+  # # # 1. Find time point closest to 24m # # #
+  # Identify which Age to keep 
+  dplyr::select(id, ados_age) %>%
+  mutate(months_from_24 = ados_age - 24 ) %>%
+  group_by(id) %>%
+  summarize(n = n(), 
+            closest = min( abs(months_from_24) )) %>% # find ADOS age closest to 24 
+  dplyr::select(id, closest) %>%
+  ungroup() %>%
+  # Merge score_to_keep with ADOS scores
+  right_join(ados, ., by = 'id') %>%
+  # Re-create months_from_24 for filtering
+  mutate(months_from_24 = abs(ados_age - 24)) %>%
+  filter(months_from_24 == closest) %>%
+  # # # 2. Prioritize ADOS 2 # # # 
+  # Rank ADOS versions from first to last choice
+  mutate(rank = ifelse(ados_measure == 'ados2-module1', 1, NA),
+         rank = ifelse(ados_measure == 'ados2-module2', 2, rank),
+         rank = ifelse(ados_measure == 'ados2-t',       3, rank),
+         rank = ifelse(ados_measure == 'ados-1',        4, rank),
+         rank = ifelse(ados_measure == 'ados-toddler-published', 5, rank)) %>%
+  group_by(id) %>%
+  slice(which.min(rank)) %>%
+  dplyr::select(-rank, Risk) %>%
+  ungroup() %>%
+  # Binarize verbal ‘A1’ —  0/1/2 = verbal ability, 3/4 = nonverbal
+  mutate(ados_verbal_bin = ifelse(ados_verbal<=2, 1, NA),
+         ados_verbal_bin =ifelse(ados_verbal == 3 | ados_verbal == 4, 0, ados_verbal_bin))
+```
+
+The <b>calibrated severity score</b> that should be more standardized and comparable across modules.  
+- `r sum(ados2$ados_measure == 'ados-1')` participants were administered the <b>ados-1</b>. Did not create CSS for subdomains for these.  
+```{r}
+# Function for calculating CSS for the SA and RRB domains of the ADOS-2
+# Input: Age, measure, RRB and SA score
+source(paste(wd,'helper_functions/Convert_ADOS.R', sep =''))
+
+ados2 = ados2 %>%
+  group_by(id) %>%
+  # Call function for each id
+  summarize(out = list(Convert_ADOS(mod=ados_measure, age_in_months=ados_age, verbal_flag =ados_verbal_bin, SA_raw=ados_SA, RRB_raw=ados_RRB))) %>%
+  # Unlist function output and append to data.frame
+  mutate(SA_CSS = unlist(lapply(out, '[[', 'SA_CSS')),
+         RRB_CSS = unlist(lapply(out, '[[', 'RRB_CSS')),
+         conversion_warning = unlist(lapply(out, '[[', 'warning'))) %>%
+  ungroup() %>%
+  dplyr::select(id, SA_CSS, RRB_CSS, conversion_warning) %>% 
+  left_join(., ados2, by = 'id') %>%
+  dplyr::select(id, ados_measure, ados_age, ados_verbal, 
+                ados_SA, ados_RRB, ados_Total,
+                ados_CSS, ados_SA_CSS = SA_CSS, ados_RRB_CSS = RRB_CSS,
+                ados_verbal_bin)
+```
+
+
+```{r}
+# Clean mullen
+mullen = rbind(mullen_hr, mullen_lr )
+colnames(mullen) = c('id', 'mullen_type', 'mullen_age', 
+                     'gross_motor-t', 'gross_motor-AE',
+                     'fine_motor-t',  'fine_motor-AE',
+                     'vis-t', 'vis-AE',
+                     'rec_lang-t', 'rec_lang-AE',
+                     'expr_lang-t', 'expr_lang-AE',
+                     'cog-t', 'NV-IQ', 'V-IQ')
+
+mullen = mullen %>% distinct()
+# For kids with more than one score, use the one closest to 24m. 
+mullen2 = mullen %>%
+  # Identify which Age to keep
+  dplyr::select(id, mullen_age) %>%
+  mutate(months_from_24 = mullen_age - 24 ) %>%
+  group_by(id) %>%
+  summarize(n = n(), 
+            closest = min( abs(months_from_24) )) %>% # find age closest to 24 
+  dplyr::select(id, closest) %>%
+  ungroup() %>%
+  # Merge score_to_keep with ADOS scores
+  right_join(mullen, ., by = 'id') %>%
+  # Re-create months_from_24 for filtering
+  mutate(months_from_24 = abs(mullen_age - 24)) %>%
+  filter(months_from_24 == closest)
+
+setdiff(unique(mullen$id), unique(mullen2$id)) # Make sure that everyone retained a mullen score 
+```
+
+# Merging participant-level data with demographics  
+```{r}
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+# Merge participant-characteristics data together
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+
+# Create individual- and session-level demographic data structures 
+demo_indiv=demo %>% # participant-level variables
+  dplyr::select(Individual, id=matlabID, Sex, Risk, CBE) %>%
+  unique()
+demo_session=demo %>% # session-level variables
+  dplyr::select(matlabID=Matlab_session,
+                Age, Date, Quality)
+
+
+```
+
+# Merging participant characteristic data & seeing who is missing data  
+## Gestational age 
+```{r}
+# Merge gestational age 
+demo_indiv2 = left_join(demo_indiv, ga2, by =c('Individual'='id'))
+missing_ga = demo_indiv2 %>% filter(is.na(ga) & is.na(ga_cat)) %>% dplyr::select(Individual, Risk)
+
+# Make sure they didn't have any data in ga
+to_check = ga %>% filter(Code %in% missing_ga$Individual) %>%
+  mutate(na_count = apply(., 1, function(x) sum(is.na(x)))) %>%
+  mutate(has_data = ifelse(na_count==ncol(ga)-1, 0, 1)) %>%
+  filter(has_data == 1) %>%
+  dplyr::select(Code)
+
+if (nrow(to_check) > 0) datatable(to_check, caption = 'Ids with gestational age data we may recover')
+```
+- There were `r nrow(missing_ga)` individuals missing data on gestational age (n=`r sum(missing_ga$Risk=='HR')` HR).  
+- Merging resulted in the number of rows changing by: `r abs(nrow(demo_indiv) - nrow(demo_indiv2))`.  
+
+##  Mullen  
+List of kids with 2 mullens equidistant from 24 months:  
+```{r}
+# Who is left with more than one Mullen 
+more_than_one_mullen = mullen2 %>%group_by(id) %>%summarize(n=n()) %>%filter(n>1)
+mullen2 %>% filter(id %in% more_than_one_mullen$id) %>% dplyr:: select(id, mullen_type, mullen_age)
+```
+Keep 29-month mullen.  
+```{r}
+to_drop = which( mullen2$id == '7227-01' & mullen2$mullen_age == 19 )
+mullen2 = mullen2[-c(to_drop),]
+
+demo_indiv3 = left_join(demo_indiv2, mullen2, by =c('Individual'='id'))
+missing_mullen = demo_indiv3 %>% filter(is.na(mullen_type)) %>% dplyr::select(Individual, Risk)
+# Make sure they didn't have any data in mullen
+to_check = mullen %>% filter(id %in% missing_mullen$Individual) 
+
+if (nrow(to_check) > 0) datatable(to_check, caption = 'Ids with Mullen data we may recover')
+```
+- There were `r nrow(missing_mullen)` individuals missing mullen data (n=`r sum(missing_mullen$Risk=='HR')` HR).  
+- Merging resulted in the number of rows changing by: `r abs(nrow(demo_indiv2) - nrow(demo_indiv3))`.  
+
+## ADOS
+List of kids with 2 ADOS's equidistant from 24 months:  
+```{r}
+# Who is left with more than one ADOS 
+more_than_one_ados = ados2 %>%group_by(id) %>%summarize(n=n()) %>%filter(n>1)
+ados2 %>% filter(id %in% more_than_one_ados$id) %>% dplyr:: select(id, ados_age)
+
+demo_indiv4 = left_join(demo_indiv3, ados2, by =c('Individual'='id'))
+missing_ados = demo_indiv4 %>% filter(is.na(ados_measure)) %>% dplyr::select(Individual, Risk)
+to_check = ados %>% filter(id %in% missing_ados$Individual) 
+
+if (nrow(to_check) > 0) datatable(to_check, caption = 'Ids with ADOS data we may recover')
+
+# Issue with CSS
+missing_CSS_subdomain = demo_indiv4 %>% 
+  filter(!(Individual %in% missing_ados$Individual)) %>%
+  filter(is.na(ados_SA_CSS)) %>% 
+  select(Individual, ados_measure)
+```
+- There were `r nrow(missing_ados)` individuals missing ADOS data (n=`r sum(missing_ados$Risk=='HR')` HR).  
+- There  `r nrow(missing_CSS_subdomain)` individuals with issues on converting the subdomains.
+
+# Who is actually missing data?
+```{r}
+
+```
+
+```{r}
+# Clean ET data 
+# create separate id and visit variables
+dat = data.frame(dat)
+dat$id = sapply(strsplit(dat$matlabID,"_"), '[', 1)
+dat$visit = sapply(strsplit(dat$matlabID,"_"), '[', 2)
+dat$visit = as.numeric(dat$visit) #nrow = 9912
+dat$left=ifelse(dat$mov %% 2 == 0, 1, 0)
+```
+
+
