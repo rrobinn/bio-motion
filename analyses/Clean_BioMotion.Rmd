@@ -1,7 +1,7 @@
 ---
 title: "Bio Motion - Clean data"
 date: "`r Sys.Date()`"
-auhtor: "Robin Sifre <robinsifre@gmail.com"
+author: "Robin Sifre <robinsifre@gmail.com>"
 output:
   rmdformats::readthedown:
     highlight: kate
@@ -48,8 +48,11 @@ ados_lr = read_excel( paste(datadir, 'partic_characteristics/ADOS.xlsx', sep =''
 mullen_hr = read_excel( paste(datadir, 'partic_characteristics/mullen.xlsx', sep =''), sheet = 'hr_mullen')
 mullen_lr = read_excel( paste(datadir, 'partic_characteristics/mullen.xlsx', sep =''), sheet = 'lr_mullen')
 
+# AVS data
+avs = read_csv( paste(datadir, 'AVS/AVS_values.csv', sep='') )
+
 # LR data already cleaned ( session - level )
-lr_dat = read_excel( paste(datadir, 'Low-Risk-SciRep.xlsx', sep=''), sheet = 'CountData')
+# lr_dat = read_excel( paste(datadir, 'Low-Risk-SciRep.xlsx', sep=''), sheet = 'CountData')
 ```
 
 
@@ -70,7 +73,7 @@ grViz("digraph {
 height = 250
       )
 ```
-
+Missing counts are based on if the individual appeared in a previous step (e.g. 1. demographics), but not a subsequent step (e.g. 2. gestational age data).  
 
 ## Notes 
 ```{r}
@@ -178,7 +181,7 @@ ados2 = ados %>%
          rank = ifelse(ados_measure == 'ados-1',        4, rank),
          rank = ifelse(ados_measure == 'ados-toddler-published', 5, rank)) %>%
   group_by(id) %>%
-  slice(which.min(rank)) %>%
+  dplyr::slice(which.min(rank)) %>%
   dplyr::select(-rank, Risk) %>%
   ungroup() %>%
   # Binarize verbal ‘A1’ —  0/1/2 = verbal ability, 3/4 = nonverbal
@@ -215,12 +218,12 @@ ados2 = ados2 %>%
 # Clean mullen
 mullen = rbind(mullen_hr, mullen_lr )
 colnames(mullen) = c('id', 'mullen_type', 'mullen_age', 
-                     'gross_motor-t', 'gross_motor-AE',
-                     'fine_motor-t',  'fine_motor-AE',
-                     'vis-t', 'vis-AE',
-                     'rec_lang-t', 'rec_lang-AE',
-                     'expr_lang-t', 'expr_lang-AE',
-                     'cog-t', 'NV-IQ', 'V-IQ')
+                     'gross_motor_t', 'gross_motor_AE',
+                     'fine_motor_t',  'fine_motor_AE',
+                     'vis_t', 'vis_AE',
+                     'rec_lang_t', 'rec_lang_AE',
+                     'expr_lang_t', 'expr_lang_AE',
+                     'cog_t', 'NVIQ', 'VIQ')
 
 mullen = mullen %>% distinct()
 # For kids with more than one score, use the one closest to 24m. 
@@ -319,22 +322,67 @@ missing_CSS_subdomain = demo_indiv4 %>%
   filter(is.na(ados_SA_CSS)) %>% 
   select(Individual, ados_measure)
 ```
-- There were `r nrow(missing_ados)` individuals missing ADOS data (n=`r sum(missing_ados$Risk=='HR')` HR).  
+- There were `r nrow(missing_ados)` individuals missing ADOS data (n=`r sum(missing_ados$Risk=='HR')` HR).
 - There  `r nrow(missing_CSS_subdomain)` individuals with issues on converting the subdomains.
 
-# Who is actually missing data?
-```{r}
 
+```{r}
+# Select individual-level demo data 
+demo_indiv = demo_indiv4 %>% 
+  dplyr::select(-c(closest, months_from_24))
 ```
 
+
 ```{r}
-# Clean ET data 
+# Clean ET data (run-level)
 # create separate id and visit variables
 dat = data.frame(dat)
-dat$id = sapply(strsplit(dat$matlabID,"_"), '[', 1)
-dat$visit = sapply(strsplit(dat$matlabID,"_"), '[', 2)
-dat$visit = as.numeric(dat$visit) #nrow = 9912
 dat$left=ifelse(dat$mov %% 2 == 0, 1, 0)
+
+# Add AVS values
+long_ids = seq(424,432,2) # Long AVS movies (the ones analyzed here)
+avs2 = avs %>% 
+    filter(MovieNum %in% long_ids) %>% 
+    dplyr::select(MovieNum, AVS0 = AVS_Diff, clip_order_1, clip_order_2) %>% # AVS0 = Whole movie AVS 
+    # Add part 1 AVS 
+    left_join(avs, by = c('clip_order_1'='MovieNum')) %>%
+    dplyr::select(MovieNum, AVS0, AVS1=AVS_Diff, clip_order_2 = clip_order_2.x) %>%
+    # Add part 2 AVS
+    left_join(avs, by=c('clip_order_2'='MovieNum')) %>%
+    dplyr::select(MovieNum, AVS0, AVS1, AVS2=AVS_Diff)
+
+
 ```
 
+# Merge all levels of data together
+```{r}
+# Merge run-level with session
+run_dat=left_join(dat, demo_session, by = 'matlabID') %>%
+  mutate(id =lapply(strsplit(matlabID, '_'), '[[', 1), # Create id variable for merging w individual-level data 
+         id = unlist(id))
+
+source(paste(wd,'helper_functions/correct_age.R', sep =''))
+
+# Calculate corrected age to add to run_dat 
+run_dat = run_dat %>% 
+  dplyr::select(id, matlabID, Age) %>% 
+  distinct() %>%
+  # Merge gestational age data 
+  left_join(demo_indiv %>% dplyr::select(id,ga, ga_cat), by = 'id' ) %>%
+  group_by(matlabID) %>%
+  # Call function for correcting age 
+  summarize(out = list(correct_age(age_months = Age, gest_age_weeks = ga))) %>%
+  mutate(corrected_age = unlist(lapply(out, '[[', 1)) ) %>% 
+  ungroup() %>%
+  dplyr::select(matlabID, corrected_age) %>% 
+  # Merge back with run-level data 
+  left_join(., run_dat, by = 'matlabID') 
+
+
+```
+
+```{r}
+write_csv(x = demo_indiv, path = paste(wd, 'analyses/clean_data/individual_chars.csv',sep=''))
+write_csv(x = run_dat, path = paste(wd, 'analyses/clean_data/et_dat.csv',sep=''))
+```
 
