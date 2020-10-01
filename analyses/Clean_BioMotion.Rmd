@@ -349,8 +349,13 @@ avs2 = avs %>%
     dplyr::select(MovieNum, AVS0, AVS1=AVS_Diff, clip_order_2 = clip_order_2.x) %>%
     # Add part 2 AVS
     left_join(avs, by=c('clip_order_2'='MovieNum')) %>%
-    dplyr::select(MovieNum, AVS0, AVS1, AVS2=AVS_Diff)
+    dplyr::select(MovieNum, AVS0, AVS1, AVS2=AVS_Diff) 
+# odd movies have the same avs score
+avs2=rbind(avs2, avs2 %>% mutate(MovieNum = MovieNum+1)) %>%
+  arrange(MovieNum)
 
+# Merge AVS values with dat 
+dat=dat%>% left_join(avs2, by=c('mov'='MovieNum'))
 
 ```
 
