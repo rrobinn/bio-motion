@@ -368,18 +368,6 @@ temp2=demo %>% filter(drop_LR_NonTD == 1) %>% count(matlabID)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## 2. Gestational age
 ```{r missing_ga}
 missing_ga = demo_indiv_ga %>% filter(is.na(ga) & is.na(ga_cat)) %>% dplyr::select(Individual, Risk)
@@ -483,8 +471,14 @@ run_dat = run_dat %>%
   left_join(., run_dat, by = 'matlabID') 
 ```
 
+```{r excl_participants}
+excluded_individuals = data.frame(id=setdiff(demo$matlabID, demo_clean$matlabID))
+```
+
+
 ```{r}
 write_csv(x = demo_indiv, path = paste(wd, 'analyses/clean_data/', Sys.Date(), 'individual_chars.csv',sep=''))
 write_csv(x = run_dat, path = paste(wd, 'analyses/clean_data/',Sys.Date(), 'et_dat.csv',sep=''))
+write_csv(x = excluded_individuals, path = paste(wd, 'analyses/clean_data/',Sys.Date(), 'excluded_individuals.csv',sep=''))
 ```
 

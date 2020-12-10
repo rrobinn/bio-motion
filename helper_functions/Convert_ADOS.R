@@ -6,7 +6,7 @@
 
 Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) { 
   # Default outout in case of error 
-  out = list(RRB_CS = NA, SA_CS=NA, warning = NA)
+  out = list(RRB_CSS = NA, SA_CSS=NA, warning = NA)
   
   # error checking
   mods = c("ados2-module1", "ados2-module2", "ados2-t")
@@ -26,7 +26,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
   if (mod == "ados2-module1" & verbal_flag == 0) {
     
     # Convert RRB score (ranges from 0-8)
-    RRB_CS = switch(RRB_raw + 1, # Add 1 bc it uses indices starting at 1 
+    RRB_CSS = switch(RRB_raw + 1, # Add 1 bc it uses indices starting at 1 
                     1, # Raw = 0
                     5, # Raw = 1
                     6, # Raw = 2
@@ -38,7 +38,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                     10) # Raw = 6-8
     
     # Convert SA 
-    SA_CS = swtich(SA_raw + 1,
+    SA_CSS = switch(SA_raw + 1,
                    1, # Raw = 0-3      
                    1, # Raw = 0-3 
                    1, # Raw = 0-3
@@ -62,7 +62,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                    10) # Raw = 20
     
   }else if (mod == "ados2-module1" & verbal_flag == 1){
-    RRB_CS = switch(RRB_raw + 1,
+    RRB_CSS = switch(RRB_raw + 1,
                     1, # Raw = 0
                     5, # Raw = 1
                     6, # Raw = 2
@@ -73,7 +73,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                     10, # Raw = 6-8
                     10) # Raw = 6-8
     
-    SA_CS = switch(SA_raw + 1,
+    SA_CSS = switch(SA_raw + 1,
                    1, # Raw = 0-1
                    1, # Raw = 0-1
                    2, # Raw = 2-4
@@ -97,7 +97,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                    10 # Raw = 18-20
     )
   } else if (mod == "ados2-module2") {
-    RRB_CS = switch(RRB_raw + 1,
+    RRB_CSS = switch(RRB_raw + 1,
                     1, # Raw = 0
                     5, # Raw = 1
                     6, # Raw = 2
@@ -108,7 +108,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                     10, # Raw = 7-8
                     10) # Raw = 7-8
     
-    SA_CS = switch(SA_raw + 1,
+    SA_CSS = switch(SA_raw + 1,
                    1, # Raw = 0-1 
                    1, # Raw = 0-1
                    2, # Raw = 2-3
@@ -132,9 +132,9 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
     )
     
   } else if (mod == "ados2-t") { 
-    if (age_in_months<21 | verbal == FALSE) { # If 12-30 months OR non-verbal
+    if (age_in_months<21 | verbal_flag == FALSE) { # If 12-30 months OR non-verbal
       
-      RRB_CS = switch(RRB_raw + 1,
+      RRB_CSS = switch(RRB_raw + 1,
                       1, # Raw = 0
                       5, # Raw = 1-2
                       5, # Raw = 1-2
@@ -145,7 +145,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                       10, # Raw = 7-8
                       10)  # Raw = 7-8
       
-      SA_CS = switch(SA_raw + 1,
+      SA_CSS = switch(SA_raw + 1,
                      1, # Raw = 0-2
                      1, # Raw = 0-2
                      1, # Raw = 0-2
@@ -169,7 +169,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                      10) # Raw = 19-20
       
     } else { # Older kids who use single words
-      RRB_CS = switch(RRB_raw + 1,
+      RRB_CSS = switch(RRB_raw + 1,
                       1, # Raw = 0
                       5, # Raw = 1
                       6, # Raw = 2
@@ -179,7 +179,7 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
                       10, # Raw = 6
                       10)  # Raw = 6
       
-      SA_CS = switch(SA_raw + 1, 
+      SA_CSS = switch(SA_raw + 1, 
                      1, #0-1
                      1, #0-1
                      2, #2-3
@@ -207,7 +207,8 @@ Convert_ADOS <- function(mod, age_in_months, verbal_flag, SA_raw, RRB_raw) {
     
   } # End ADOS-T code 
   
-  out = list(RRB_CS = RRB_CS, SA_CS=SA_CS)
+  out$RRB_CSS = RRB_CSS
+  out$SA_CSS = SA_CSS
   return(out)
 } # End function
 
